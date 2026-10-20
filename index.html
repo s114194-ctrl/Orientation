@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>迎新大地遊戲 - 即時積分與動態追蹤系統</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK (Compat v9) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        .gold { background: linear-gradient(135deg, #f6d365 0%, #fda085 100%); color: #000; }
+        .silver { background: linear-gradient(135deg, #e6e9f0 0%, #eef1f5 100%); color: #000; }
+        .bronze { background: linear-gradient(135deg, #f6d365 0%, #d1fdff 100%); color: #000; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8 font-sans pt-10">
+
+    <!-- 🌐 網路連線狀態提示條 -->
+    <div id="offlineNotice" class="hidden fixed top-0 left-0 w-full bg-red-600 text-white text-center py-2 text-xs font-bold z-50 shadow-md flex items-center justify-center gap-2">
+        <span>⚠️ 網路連線已中斷，請檢查 Wi-Fi 或行動網路！目前操作無法同步至雲端。</span>
+    </div>
+
+    <div class="max-w-6xl mx-auto space-y-6">
+
+        <!-- 頂部導覽 Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg gap-3">
+            <div>
+                <h1 class="text-xl md:text-2xl font-black text-yellow-400">🔥 迎新RPG控制系統</h1>
+                <p id="currentPageSubtitle" class="text-xs text-slate-400">📺 主看板大螢幕模式</p>
+            </div>
+            
+            <div class="flex w-full md:w-auto gap-2">
+                <button id="navReportBtn" onclick="switchView('report')" class="flex-1 md:flex-none bg-yellow-500 hover:bg-yellow-600 text-slate-900 px-4 py-2.5 rounded-lg font-bold text-sm transition shadow-md">
+                    📝 隊輔 / 關主回報
+                </button>
+                <button id="navMainBtn" onclick="switchView('main')" class="hidden flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2.5 rounded-lg font-bold text-sm transition shadow-md border border-slate-600">
+                    📺 返回主看板
+                </button>
+            </div>
+        </header>
+
+        <!-- ==================== 📄 頁面 1：主看板大螢幕 (公開所有人可看) ==================== -->
+        <main id="viewMain" class="space-y-6">
+            
+            <!-- 📍 全場小隊關卡 & 停留即時追蹤 -->
+            <section class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+                <h2 class="text-md font-bold text-cyan-400 mb-3 flex items-center gap-1">
+                    📍 全場小隊關卡 & 停留即時追蹤
+                </h2>
+                <div id="teamStatusBoard" class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <!-- 即時狀態渲染區 -->
+                </div>
+            </section>
+
+            <!-- 🏆 總積分與排行榜區塊 -->
+            <section class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg space-y-4">
+                <div class="flex flex-col md:flex-row justify-between md:items-center gap-2">
+                    <h2 class="text-lg font-bold text-yellow-400">🏆 總積分排行榜</h2>
+                    <div class="flex flex-wrap gap-1 bg-slate-900 p-1 rounded-lg text-xs">
+                        <button onclick="switchTab('total')" id="tab-total" class="px-3 py-1.5 rounded font-bold bg-yellow-500 text-slate-900">總積分</button>
+                        <button onclick="switchTab('game1')" id="tab-game1" class="px-2.5 py-1.5 rounded">天晴(索普拉諾)</button>
+                        <button onclick="switchTab('game2')" id="tab-game2" class="px-2.5 py-1.5 rounded">博皓(諾巴迪)</button>
+                        <button onclick="switchTab('game3')" id="tab-game3" class="px-2.5 py-1.5 rounded">旻軒(看)</button>
+                        <button onclick="switchTab('game4')" id="tab-game4" class="px-2.5 py-1.5 rounded">翊喆(奧托)</button>
+                        <button onclick="switchTab('game5')" id="tab-game5" class="px-2.5 py-1.5 rounded">鎧韓(貝斯)</button>
+                        <button onclick="switchTab('game6')" id="tab-game6" class="px-2.5 py-1.5 rounded">睦義(天尼爾)</button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-700/50 text-slate-300 text-xs uppercase border-b border-slate-600">
+                            <tr>
+                                <th class="p-3 text-center w-16">名次</th>
+                                <th class="p-3">小隊名稱</th>
+                                <th id="tableHeaderValue" class="p-3 text-right">總積分 (滿分36分)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody" class="divide-y divide-slate-700/50">
+                            <!-- 排行榜資料列 -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 頁尾進入管理者按鈕 -->
+            <div class="pt-6 text-center">
+                <button onclick="accessAdminView()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 font-semibold px-5 py-2.5 rounded-xl text-xs transition active:scale-95 inline-flex items-center gap-2">
+                    🔑 進入管理者控制台 (查看歷史停留時間/修復與重置)
+                </button>
+            </div>
+        </main>
+
+        <!-- ==================== 📄 頁面 2：隊輔 / 關主回報頁面 ==================== -->
+        <section id="viewReport" class="hidden space-y-6">
+            <div class="bg-slate-800 p-5 rounded-xl border-2 border-yellow-500/50 shadow-2xl space-y-6">
+                
+                <!-- 📍 1. 關卡狀態控制 -->
+                <div>
+                    <h2 class="text-lg font-bold text-cyan-400 mb-3 flex items-center gap-2">
+                        📍 1. 回報小隊關卡進行狀態
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">1. 選擇小隊</label>
+                            <select id="statusTeamSelect" onchange="syncStageSelectionWithData()" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-sm">
+                                <option value="一小">一小</option>
+                                <option value="二小">二小</option>
+                                <option value="三小">三小</option>
+                                <option value="四小">四小</option>
+                                <option value="五小">五小</option>
+                                <option value="六小">六小</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">2. 選擇關卡</label>
+                            <select id="statusGameSelect" onchange="syncStageSelectionWithData()" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-sm">
+                                <option value="天晴(索普拉諾)">天晴(索普拉諾)</option>
+                                <option value="博皓(諾巴迪)">博皓(諾巴迪)</option>
+                                <option value="旻軒(看)">旻軒(看)</option>
+                                <option value="翊喆(奧托)">翊喆(奧托)</option>
+                                <option value="鎧韓(貝斯)">鎧韓(貝斯)</option>
+                                <option value="睦義(天尼爾)">睦義(天尼爾)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">3. 選擇進行階段</label>
+                            <select id="statusStageSelect" onchange="syncToggleButtonUI()" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-sm">
+                                <option value="stage1">🎮 第一階段 (遊戲進行中)</option>
+                                <option value="stage2">💬 第二階段 (對話交流)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <button id="toggleGameBtn" onclick="handleGameStatusToggle()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded text-sm transition shadow-lg active:scale-95">
+                                ▶️ 開始關卡 (開始計時)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-700">
+
+                <!-- 🎮 2. 回報遊戲成績 -->
+                <div>
+                    <h2 class="text-lg font-bold text-yellow-400 mb-3 flex items-center gap-2">
+                        🎮 2. 回報遊戲成績 (分數 / 時間)
+                    </h2>
+                    <form onsubmit="submitScore(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">選擇關卡</label>
+                                <select id="gameSelect" onchange="updateFormInputType()" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-sm">
+                                    <option value="game1">天晴(索普拉諾)</option>
+                                    <option value="game2">博皓(諾巴迪)</option>
+                                    <option value="game3">旻軒(看)</option>
+                                    <option value="game4">翊喆(奧托)</option>
+                                    <option value="game5">鎧韓(貝斯)</option>
+                                    <option value="game6">睦義(天尼爾)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">選擇小隊</label>
+                                <select id="teamSelect" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-sm">
+                                    <option value="一小">一小 可愛的我就是我</option>
+                                    <option value="二小">二小 可不可熟成紅茶</option>
+                                    <option value="三小">三小 三缺一剛好可以</option>
+                                    <option value="四小">四小 可不可以4點煮牛肉麵</option>
+                                    <option value="五小">五小 名偵探可南</option>
+                                    <option value="六小">六小 可惜不是你</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 1. 通關時間輸入區（專用：博皓(諾巴迪) & 翊喆(奧托)） -->
+                        <div id="timeInputGroup" class="hidden">
+                            <label class="block text-xs text-slate-400 mb-1">輸入通關時間 (限制：0分 ～ 120分)</label>
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 flex items-center bg-slate-700 border border-slate-600 rounded px-3 py-2">
+                                    <input type="number" min="0" max="120" id="timeMin" value="0" placeholder="0" class="w-full bg-transparent text-right text-xl font-bold font-mono text-white focus:outline-none">
+                                    <span class="text-slate-400 font-bold ml-1">分</span>
+                                </div>
+                                <div class="flex-1 flex items-center bg-slate-700 border border-slate-600 rounded px-3 py-2">
+                                    <input type="number" min="0" max="59" step="0.1" id="timeSec" value="0" placeholder="0" class="w-full bg-transparent text-right text-xl font-bold font-mono text-white focus:outline-none">
+                                    <span class="text-slate-400 font-bold ml-1">秒</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. 7個成績輸入區（專用：鎧韓(貝斯)） -->
+                        <div id="multiScoreInputGroup" class="hidden space-y-3">
+                            <label class="block text-xs text-slate-400">輸入 7 位隊員成績（系統將自動計算加總總分）</label>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 1</span>
+                                    <input type="number" step="0.1" min="0" id="mScore1" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 2</span>
+                                    <input type="number" step="0.1" min="0" id="mScore2" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 3</span>
+                                    <input type="number" step="0.1" min="0" id="mScore3" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 4</span>
+                                    <input type="number" step="0.1" min="0" id="mScore4" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 5</span>
+                                    <input type="number" step="0.1" min="0" id="mScore5" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 6</span>
+                                    <input type="number" step="0.1" min="0" id="mScore6" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-slate-700/60 p-2 rounded border border-slate-600">
+                                    <span class="text-[11px] text-slate-400 block mb-1">隊員 7</span>
+                                    <input type="number" step="0.1" min="0" id="mScore7" oninput="calcMultiSum()" value="0" class="w-full bg-slate-800 border border-slate-600 rounded p-1 text-center font-mono font-bold text-white">
+                                </div>
+                                <div class="bg-yellow-500/10 p-2 rounded border border-yellow-500/40 flex flex-col justify-center items-center">
+                                    <span class="text-[11px] text-yellow-400 font-bold">預估總分</span>
+                                    <span id="mScoreTotal" class="text-lg font-black font-mono text-yellow-300">0 分</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. 單一分數輸入區（通用關卡） -->
+                        <div id="scoreInputGroup">
+                            <label class="block text-xs text-slate-400 mb-1">輸入得分 / 答對題數 (限制：0 ～ 100 分)</label>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="number" min="0" max="100" step="1" id="scoreValue" value="0" placeholder="0" class="w-full bg-slate-700 border border-slate-600 rounded p-2 text-white text-center text-xl font-bold font-mono mb-1">
+                                
+                                <div class="flex w-full gap-2">
+                                    <button type="button" onclick="adjustScore(-1)" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded text-sm active:scale-95 transition">-1 分</button>
+                                    <button type="button" onclick="adjustScore(1)" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded text-sm active:scale-95 transition">+1 分</button>
+                                    <button type="button" onclick="adjustScore(2)" class="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 rounded text-sm active:scale-95 transition">+2 分</button>
+                                    <button type="button" onclick="resetScore()" class="bg-slate-600 hover:bg-slate-500 text-white font-semibold px-4 py-2 rounded text-sm transition">歸零</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="submitScoreBtn" type="submit" class="w-full bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold py-2.5 rounded-lg shadow transition">
+                            送出成績
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 頁尾進入管理者按鈕 -->
+            <div class="pt-6 text-center">
+                <button onclick="accessAdminView()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 font-semibold px-5 py-2.5 rounded-xl text-xs transition active:scale-95 inline-flex items-center gap-2">
+                    🔑 進入管理者控制台 (需要密碼)
+                </button>
+            </div>
+        </section>
+
+        <!-- ==================== 📄 頁面 3：管理者控制台頁面 (限管理者存取) ==================== -->
+        <section id="viewAdmin" class="hidden space-y-6">
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-red-500/30 flex justify-between items-center">
+                <div class="flex items-center gap-2 text-red-400 font-bold text-sm">
+                    🔒 管理者高階控制台 (已驗證權限)
+                </div>
+                <button onclick="switchView('main')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 rounded text-xs">
+                    退出管理者頁面
+                </button>
+            </div>
+
+            <!-- 🔥【新增機制 4】：管理者手動微調與復原區 (Undo) -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-cyan-500/40 shadow-lg space-y-3">
+                <h3 class="text-sm font-bold text-cyan-400 flex items-center gap-1">
+                    🛠️ 手動微調與復原小隊狀態 (Undo / 強制介入)
+                </h3>
+                <p class="text-xs text-slate-400">若隊輔誤觸結束或關卡卡死，管理者可在此將小隊強制設回「移動中」或恢復計時。</p>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1">
+                    <select id="adminFixTeam" class="bg-slate-700 border border-slate-600 rounded p-2 text-xs text-white">
+                        <option value="一小">一小</option>
+                        <option value="二小">二小</option>
+                        <option value="三小">三小</option>
+                        <option value="四小">四小</option>
+                        <option value="五小">五小</option>
+                        <option value="六小">六小</option>
+                    </select>
+                    <select id="adminFixGame" class="bg-slate-700 border border-slate-600 rounded p-2 text-xs text-white">
+                        <option value="天晴(索普拉諾)">天晴(索普拉諾)</option>
+                        <option value="博皓(諾巴迪)">博皓(諾巴迪)</option>
+                        <option value="旻軒(看)">旻軒(看)</option>
+                        <option value="翊喆(奧托)">翊喆(奧托)</option>
+                        <option value="鎧韓(貝斯)">鎧韓(貝斯)</option>
+                        <option value="睦義(天尼爾)">睦義(天尼爾)</option>
+                    </select>
+                    <button onclick="adminForceResetTeam()" class="bg-slate-700 hover:bg-slate-600 text-amber-300 border border-amber-500/40 font-bold py-2 rounded text-xs">
+                        🔄 強制解鎖改為「移動中」
+                    </button>
+                    <button onclick="adminForceSetStage1()" class="bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 border border-emerald-500/40 font-bold py-2 rounded text-xs">
+                        ▶️ 強制進入第1階段計時
+                    </button>
+                </div>
+            </div>
+
+            <!-- 📊 專屬管理者：第一階段耗時紀錄表 -->
+            <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg space-y-4">
+                <div>
+                    <h2 class="text-lg font-bold text-cyan-400">📊 各小隊「第一階段」關卡耗時紀錄表</h2>
+                    <p class="text-xs text-slate-400 mt-1">只紀錄小隊在第一階段（遊戲進行）的實際耗時，第二階段不計入</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-center text-xs border-collapse">
+                        <thead class="bg-slate-700/80 text-slate-200">
+                            <tr>
+                                <th class="p-3 border border-slate-600 min-w-[80px]">小隊</th>
+                                <th class="p-2 border border-slate-600">天晴(索普拉諾)</th>
+                                <th class="p-2 border border-slate-600">博皓(諾巴迪)</th>
+                                <th class="p-2 border border-slate-600">旻軒(看)</th>
+                                <th class="p-2 border border-slate-600">翊喆(奧托)</th>
+                                <th class="p-2 border border-slate-600">鎧韓(貝斯)</th>
+                                <th class="p-2 border border-slate-600">睦義(天尼爾)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyMatrixBody" class="divide-y divide-slate-700">
+                            <!-- 動態繪製歷史矩陣表格 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ⚠️ 專屬管理者：系統重置區 -->
+            <div class="bg-red-950/20 border border-red-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div>
+                    <h3 class="text-xs font-bold text-red-400 flex items-center gap-1">
+                        ⚠️ 系統重置區
+                    </h3>
+                    <p class="text-[11px] text-slate-500 mt-0.5">清空所有成績與即時動態記錄，讓遊戲從頭開始。</p>
+                </div>
+                <button onclick="resetAllData()" type="button" class="bg-red-900/60 hover:bg-red-700 text-red-200 hover:text-white font-bold px-3 py-1.5 rounded text-xs transition active:scale-95 border border-red-700/50 shrink-0">
+                    🗑️ 重置所有資料與計時
+                </button>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        const RESET_PASSWORD = "20261018";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD3Wt5rCZlpRQrhmA-zocR7y3gankVnEnU",
+            authDomain: "orientation-events.firebaseapp.com",
+            databaseURL: "https://orientation-events-default-rtdb.firebaseio.com",
+            projectId: "orientation-events",
+            storageBucket: "orientation-events.firebasestorage.app",
+            messagingSenderId: "457062924735",
+            appId: "1:457062924735:web:d4e8a1871a02be8ca5610a",
+            measurementId: "G-SFJMMW3PS3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        const teamsList = ['一小', '二小', '三小', '四小', '五小', '六小'];
+        const gamesList = [
+            '天晴(索普拉諾)',
+            '博皓(諾巴迪)',
+            '旻軒(看)',
+            '翊喆(奧托)',
+            '鎧韓(貝斯)',
+            '睦義(天尼爾)'
+        ];
+
+        const gameRules = {
+            'game1': { name: '天晴(索普拉諾)', type: 'score', unit: '分' },
+            'game2': { name: '博皓(諾巴迪)', type: 'time', unit: '秒' },
+            'game3': { name: '旻軒(看)', type: 'score', unit: '分' },
+            'game4': { name: '翊喆(奧托)', type: 'time', unit: '秒' },
+            'game5': { name: '鎧韓(貝斯)', type: 'multi_score', unit: '分' },
+            'game6': { name: '睦義(天尼爾)', type: 'score', unit: '分' }
+        };
+
+        let rawScores = {};
+        let currentStatuses = {};
+        let historyTimes = {};
+        let currentTab = 'total';
+        let teamStatusTimer = null;
+        let isOnline = true;
+        let isAdminAuthenticated = false;
+
+        const connectedRef = database.ref(".info/connected");
+        connectedRef.on("value", (snap) => {
+            const notice = document.getElementById("offlineNotice");
+            if (snap.val() === true) {
+                isOnline = true;
+                notice.classList.add("hidden");
+            } else {
+                isOnline = false;
+                notice.classList.remove("hidden");
+            }
+        });
+
+        database.ref('camp_raw_scores').on('value', (snapshot) => {
+            rawScores = snapshot.val() || {};
+            renderLeaderboard();
+        });
+
+        database.ref('team_game_history').on('value', (snapshot) => {
+            historyTimes = snapshot.val() || {};
+            renderHistoryMatrix();
+        });
+
+        database.ref('team_status').on('value', (snapshot) => {
+            currentStatuses = snapshot.val() || {};
+            if (teamStatusTimer) clearInterval(teamStatusTimer);
+
+            function updateBoardUI() {
+                const board = document.getElementById('teamStatusBoard');
+                if (!board) return;
+                board.innerHTML = '';
+
+                teamsList.forEach(team => {
+                    const info = currentStatuses[team] || { game: '🚶 移動中 / 前往下一關', state: 'moving', startTimestamp: null };
+                    
+                    let diffSeconds = 0;
+                    if (info.startTimestamp) {
+                        diffSeconds = Math.floor((Date.now() - info.startTimestamp) / 1000);
+                    }
+
+                    let statusBadge = '';
+                    let cardBg = 'bg-slate-700/60 border-slate-600';
+
+                    if (info.state === 'in_game_stage1') {
+                        const mins = Math.floor(diffSeconds / 60);
+                        const secs = diffSeconds % 60;
+                        statusBadge = `<span class="text-yellow-400 font-mono font-bold animate-pulse">🎮 第1階段中 (${mins}分${secs}秒)</span>`;
+                        cardBg = 'bg-amber-950/40 border-amber-500/60 shadow-md';
+                    } else if (info.state === 'in_game_stage2') {
+                        statusBadge = `<span class="text-cyan-400 font-mono font-bold">💬 第2階段 (對話交流中)</span>`;
+                        cardBg = 'bg-cyan-950/40 border-cyan-500/60 shadow-md';
+                    } else {
+                        statusBadge = `<span class="text-slate-400 font-mono font-bold">🚶 移動中</span>`;
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = `p-3 rounded-lg border ${cardBg}`;
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs text-slate-300 font-bold">${team}</span>
+                            <span class="text-[11px]">${statusBadge}</span>
+                        </div>
+                        <div class="text-white font-bold mt-1 text-sm">${info.game}</div>
+                    `;
+                    board.appendChild(card);
+                });
+            }
+
+            updateBoardUI();
+            teamStatusTimer = setInterval(updateBoardUI, 1000);
+            renderHistoryMatrix();
+            syncStageSelectionWithData();
+        });
+
+        function syncStageSelectionWithData() {
+            const team = document.getElementById('statusTeamSelect').value;
+            const selectedGame = document.getElementById('statusGameSelect').value;
+            const stageSelect = document.getElementById('statusStageSelect');
+            const current = currentStatuses[team];
+
+            if (current && current.game === selectedGame) {
+                if (current.state === 'in_game_stage1') {
+                    stageSelect.value = 'stage1';
+                } else if (current.state === 'in_game_stage2') {
+                    stageSelect.value = 'stage2';
+                }
+            }
+            syncToggleButtonUI();
+        }
+
+        function syncToggleButtonUI() {
+            const team = document.getElementById('statusTeamSelect').value;
+            const selectedGame = document.getElementById('statusGameSelect').value;
+            const btn = document.getElementById('toggleGameBtn');
+
+            if (!btn) return;
+
+            const current = currentStatuses[team];
+
+            if (current && (current.state === 'in_game_stage1' || current.state === 'in_game_stage2') && current.game === selectedGame) {
+                btn.innerText = '⏱️ 結束關卡 (轉移動中)';
+                btn.className = 'w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-3 rounded text-sm transition shadow-lg active:scale-95';
+            } else {
+                btn.innerText = '▶️ 開始關卡 (開始計時)';
+                btn.className = 'w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded text-sm transition shadow-lg active:scale-95';
+            }
+        }
+
+        // 🔥【新增機制 2】：防連點鎖定 Helper (Debounce)
+        function disableButtonTemporarily(btnId, delayMs = 1500) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }, delayMs);
+        }
+
+        function handleGameStatusToggle() {
+            if (!isOnline) { alert('⚠️ 目前網路斷線中，無法更新狀態！'); return; }
+
+            disableButtonTemporarily('toggleGameBtn');
+
+            const team = document.getElementById('statusTeamSelect').value;
+            const selectedGame = document.getElementById('statusGameSelect').value;
+            const targetStage = document.getElementById('statusStageSelect').value;
+            const current = currentStatuses[team];
+
+            // 1. 結束關卡
+            if (current && (current.state === 'in_game_stage1' || current.state === 'in_game_stage2') && current.game === selectedGame) {
+                const updates = {};
+
+                if (current.state === 'in_game_stage1' && current.startTimestamp) {
+                    const elapsedSec = Math.max(1, Math.floor((Date.now() - current.startTimestamp) / 1000));
+                    updates[`team_game_history/${team}/${selectedGame}`] = {
+                        durationSec: elapsedSec,
+                        completedAt: Date.now()
+                    };
+                }
+
+                updates[`team_status/${team}`] = {
+                    game: '🚶 移動中 / 前往下一關',
+                    state: 'moving',
+                    startTimestamp: null
+                };
+
+                database.ref().update(updates)
+                    .then(() => alert(`🎉 【${team}】已完成【${selectedGame}】，全場看板狀態自動設為「移動中」！`))
+                    .catch((err) => alert('❌ 更新失敗：' + err.message));
+            } 
+            // 2. 開始新關卡（含防呆）
+            else {
+                if (current && current.state !== 'moving' && current.game !== selectedGame && current.game !== '🚶 移動中 / 前往下一關') {
+                    alert(`❌ 【${team}】目前正在【${current.game}】進行中！\n\n請先選回【${current.game}】按下「結束關卡」後，才能開啟新的關卡！`);
+                    document.getElementById('statusGameSelect').value = current.game;
+                    syncStageSelectionWithData();
+                    return;
+                }
+
+                // 關卡衝突檢查
+                let occupiedTeam = null;
+                for (const otherTeam of teamsList) {
+                    if (otherTeam !== team) {
+                        const otherStatus = currentStatuses[otherTeam];
+                        if (otherStatus && otherStatus.game === selectedGame && (otherStatus.state === 'in_game_stage1' || otherStatus.state === 'in_game_stage2')) {
+                            occupiedTeam = otherTeam;
+                            break;
+                        }
+                    }
+                }
+
+                if (occupiedTeam) {
+                    alert(`❌ 關卡衝突！【${selectedGame}】目前已有【${occupiedTeam}】正在進行中！\n\n必須等【${occupiedTeam}】結束關卡後，【${team}】才能登記進入！`);
+                    return;
+                }
+
+                const updates = {};
+                if (targetStage === 'stage2' && current && current.state === 'in_game_stage1' && current.startTimestamp) {
+                    const elapsedSec = Math.max(1, Math.floor((Date.now() - current.startTimestamp) / 1000));
+                    updates[`team_game_history/${team}/${selectedGame}`] = {
+                        durationSec: elapsedSec,
+                        completedAt: Date.now()
+                    };
+                }
+
+                const stateValue = (targetStage === 'stage2') ? 'in_game_stage2' : 'in_game_stage1';
+                updates[`team_status/${team}`] = {
+                    game: selectedGame,
+                    state: stateValue,
+                    startTimestamp: (targetStage === 'stage1') ? Date.now() : null
+                };
+
+                database.ref().update(updates)
+                    .then(() => alert(`▶️ 【${team}】已將【${selectedGame}】設定為${targetStage === 'stage1' ? '第一階段 (開始計時)' : '第二階段 (對話交流中)'}！`))
+                    .catch((err) => alert('❌ 更新失敗：' + err.message));
+            }
+        }
+
+        function switchView(target) {
+            const vMain = document.getElementById('viewMain');
+            const vReport = document.getElementById('viewReport');
+            const vAdmin = document.getElementById('viewAdmin');
+            
+            const btnReport = document.getElementById('navReportBtn');
+            const btnMain = document.getElementById('navMainBtn');
+            const subtitle = document.getElementById('currentPageSubtitle');
+
+            vMain.classList.add('hidden');
+            vReport.classList.add('hidden');
+            vAdmin.classList.add('hidden');
+
+            if (target === 'main') {
+                vMain.classList.remove('hidden');
+                btnReport.classList.remove('hidden');
+                btnMain.classList.add('hidden');
+                subtitle.innerText = '📺 主看板大螢幕模式';
+            } else if (target === 'report') {
+                vReport.classList.remove('hidden');
+                btnReport.classList.add('hidden');
+                btnMain.classList.remove('hidden');
+                subtitle.innerText = '📝 隊輔 / 關主成績動態回報頁面';
+            } else if (target === 'admin') {
+                vAdmin.classList.remove('hidden');
+                btnReport.classList.remove('hidden');
+                btnMain.classList.remove('hidden');
+                subtitle.innerText = '🔑 管理者控制台 (即時動態 & 停留時間 & 重置)';
+            }
+        }
+
+        function accessAdminView() {
+            if (isAdminAuthenticated) {
+                switchView('admin');
+                return;
+            }
+
+            const pwd = prompt('🔒 請輸入管理者密碼：');
+            if (pwd === null) return;
+
+            if (pwd === RESET_PASSWORD) {
+                isAdminAuthenticated = true;
+                switchView('admin');
+            } else {
+                alert('❌ 密碼錯誤，無法進入管理者控制台！');
+            }
+        }
+
+        function renderHistoryMatrix() {
+            const tbody = document.getElementById('historyMatrixBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            teamsList.forEach(team => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/40 transition';
+
+                let cellsHTML = `<td class="p-3 border border-slate-700 font-bold text-slate-200 bg-slate-800">${team}</td>`;
+
+                gamesList.forEach(gameName => {
+                    const record = historyTimes[team] && historyTimes[team][gameName];
+                    const current = currentStatuses[team];
+
+                    let cellText = '<span class="text-slate-600">-</span>';
+
+                    if (record) {
+                        const mins = Math.floor(record.durationSec / 60);
+                        const secs = record.durationSec % 60;
+                        cellText = `<span class="text-emerald-400 font-mono font-bold">階段1耗時 ${mins}分${secs}秒</span>`;
+                    } 
+                    else if (current && current.state === 'in_game_stage1' && current.game === gameName) {
+                        cellText = `<span class="text-yellow-400 text-[11px] animate-pulse font-bold">⏳ 階段1進行中</span>`;
+                    }
+
+                    cellsHTML += `<td class="p-3 border border-slate-700">${cellText}</td>`;
+                });
+
+                tr.innerHTML = cellsHTML;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function calcMultiSum() {
+            let total = 0;
+            for (let i = 1; i <= 7; i++) {
+                const val = parseFloat(document.getElementById(`mScore${i}`).value) || 0;
+                total += val;
+            }
+            document.getElementById('mScoreTotal').innerText = `${total.toFixed(1)} 分`;
+            return total;
+        }
+
+        function submitScore(e) {
+            e.preventDefault();
+            
+            if (!isOnline) {
+                alert('⚠️ 目前網路斷線中，無法送出成績！');
+                return;
+            }
+
+            disableButtonTemporarily('submitScoreBtn');
+
+            const gameId = document.getElementById('gameSelect').value;
+            const team = document.getElementById('teamSelect').value.split(' ')[0]; // 擷取小隊名
+            const rule = gameRules[gameId];
+
+            let value = 0;
+            let displayMsg = '';
+
+            if (rule.type === 'time') {
+                const mins = parseFloat(document.getElementById('timeMin').value) || 0;
+                const secs = parseFloat(document.getElementById('timeSec').value) || 0;
+                
+                if (mins < 0 || secs < 0) { alert('⚠ 時間不可為負數！'); return; }
+                if (secs >= 60) { alert('⚠ 秒數欄位請輸入 0 ~ 59 之間！'); return; }
+
+                value = (mins * 60) + secs;
+                if (value <= 0) { alert('⚠ 通關時間不可為 0 秒！'); return; }
+
+                displayMsg = `${mins} 分 ${secs} 秒`;
+            } else if (rule.type === 'multi_score') {
+                value = calcMultiSum();
+                displayMsg = `總分 ${value.toFixed(1)} 分`;
+            } else {
+                value = parseFloat(document.getElementById('scoreValue').value) || 0;
+                if (value < 0) { alert('⚠️ 得分不可為負數！'); return; }
+                if (value > 100) { alert('⚠️ 分數不得高於 100 分！'); return; }
+                displayMsg = `${value} 分`;
+            }
+
+            // 🔥【新增機制 1】：重複成績覆蓋防呆檢查
+            const existingRawVal = rawScores[gameId] && rawScores[gameId][team];
+            let overwriteNotice = '';
+            if (existingRawVal !== undefined) {
+                let formattedOldVal = existingRawVal;
+                if (rule.type === 'time') {
+                    const om = Math.floor(existingRawVal / 60);
+                    const os = (existingRawVal % 60).toFixed(1);
+                    formattedOldVal = `${om > 0 ? om + '分' : ''}${os}秒`;
+                } else {
+                    formattedOldVal = `${existingRawVal} 分`;
+                }
+                overwriteNotice = `⚠️ 警告：【${team}】在【${rule.name}】已有歷史成績（原紀錄：${formattedOldVal}）！\n本次送出將會「直接覆蓋」舊資料！\n\n`;
+            }
+
+            if (!confirm(`${overwriteNotice}❓ 請確認成績資料：\n\n・小隊：${team}\n・關卡：${rule.name}\n・新成績：${displayMsg}\n\n確定要送出嗎？`)) return;
+
+            database.ref(`camp_raw_scores/${gameId}/${team}`).set(value)
+                .then(() => {
+                    alert(`✅ 已成功儲存【${team}】在【${rule.name}】的成績！`);
+                    document.getElementById('timeMin').value = '0';
+                    document.getElementById('timeSec').value = '0';
+                    for (let i = 1; i <= 7; i++) {
+                        document.getElementById(`mScore${i}`).value = '0';
+                    }
+                    document.getElementById('scoreValue').value = '0';
+                    calcMultiSum();
+                })
+                .catch((error) => alert('❌ 寫入失敗：' + error.message));
+        }
+
+        // 🔥【新增機制 4 實作】：管理者強制解鎖改為移動中
+        function adminForceResetTeam() {
+            const team = document.getElementById('adminFixTeam').value;
+            if (!confirm(`🔧 確定要強制解鎖【${team}】的狀態，將其改為「移動中」嗎？`)) return;
+
+            database.ref(`team_status/${team}`).set({
+                game: '🚶 移動中 / 前往下一關',
+                state: 'moving',
+                startTimestamp: null
+            })
+            .then(() => alert(`✅ 已成功將【${team}】重置為「移動中」！`))
+            .catch((err) => alert('❌ 操作失敗：' + err.message));
+        }
+
+        // 🔥【新增機制 4 實作】：管理者強制設定第1階段計時
+        function adminForceSetStage1() {
+            const team = document.getElementById('adminFixTeam').value;
+            const game = document.getElementById('adminFixGame').value;
+            if (!confirm(`🔧 確定要強制將【${team}】設定至【${game}】的第一階段並開始計時嗎？`)) return;
+
+            database.ref(`team_status/${team}`).set({
+                game: game,
+                state: 'in_game_stage1',
+                startTimestamp: Date.now()
+            })
+            .then(() => alert(`✅ 已成功將【${team}】加入【${game}】第1階段！`))
+            .catch((err) => alert('❌ 操作失敗：' + err.message));
+        }
+
+        function resetAllData() {
+            if (!isOnline) { alert('⚠️ 目前網路斷線中！'); return; }
+
+            if (!confirm('🚨 最終確認：這將會清空所有小隊的得分、動態計時與歷史紀錄，確定重置？')) return;
+
+            Promise.all([
+                database.ref('camp_raw_scores').remove(),
+                database.ref('team_status').remove(),
+                database.ref('team_game_history').remove()
+            ])
+            .then(() => alert('🧹 所有資料與計時記錄已成功重置！'))
+            .catch((error) => alert('❌ 重置失敗：' + error.message));
+        }
+
+        function calculateGamePoints(gameId) {
+            const rule = gameRules[gameId];
+            const gameData = rawScores[gameId] || {};
+            
+            let list = Object.keys(gameData).map(team => ({ team, rawValue: gameData[team] }));
+            if (list.length === 0) return {};
+
+            if (rule.type === 'time') {
+                list.sort((a, b) => a.rawValue - b.rawValue);
+            } else {
+                list.sort((a, b) => b.rawValue - a.rawValue);
+            }
+
+            let pointsMap = {};
+            let i = 0;
+            while (i < list.length) {
+                let j = i;
+                while (j < list.length && list[j].rawValue === list[i].rawValue) { j++; }
+                
+                const assignedPts = Math.max(1, 6 - i);
+
+                for (let k = i; k < j; k++) {
+                    pointsMap[list[k].team] = { points: assignedPts, rawValue: list[k].rawValue, rank: i + 1 };
+                }
+                i = j;
+            }
+            return pointsMap;
+        }
+
+        function renderLeaderboard() {
+            const tbody = document.getElementById('leaderboardBody');
+            const headerVal = document.getElementById('tableHeaderValue');
+            if (!tbody || !headerVal) return;
+            tbody.innerHTML = '';
+
+            if (currentTab === 'total') {
+                headerVal.innerText = '遊戲總積分 (高至低)';
+                let totalPoints = {};
+                teamsList.forEach(t => totalPoints[t] = 0);
+
+                Object.keys(gameRules).forEach(gameId => {
+                    const pointsMap = calculateGamePoints(gameId);
+                    Object.keys(pointsMap).forEach(team => { totalPoints[team] += pointsMap[team].points; });
+                });
+
+                let list = teamsList.map(team => ({ team, value: totalPoints[team] })).sort((a, b) => b.value - a.value);
+                displayRows(list, '分 (積分)');
+            } else {
+                const rule = gameRules[currentTab];
+                headerVal.innerText = `第一階段成績 ➔ 關卡積分`;
+
+                const pointsMap = calculateGamePoints(currentTab);
+                let list = teamsList.map(team => {
+                    const data = pointsMap[team];
+                    let rawDisplay = '';
+                    if (data) {
+                        if (rule.type === 'time') {
+                            const m = Math.floor(data.rawValue / 60);
+                            const s = (data.rawValue % 60).toFixed(1);
+                            rawDisplay = `${m > 0 ? m + '分' : ''}${s}秒`;
+                        } else {
+                            rawDisplay = `${data.rawValue} 分`;
+                        }
+                    }
+                    return {
+                        team,
+                        value: data ? `${rawDisplay} ➔ 獲得 ${data.points} 分` : '未完成 (0 分)',
+                        pts: data ? data.points : 0
+                    };
+                }).sort((a, b) => b.pts - a.pts);
+
+                displayRows(list, '', false);
+            }
+        }
+
+        function displayRows(list, suffix = '', isTotal = true) {
+            const tbody = document.getElementById('leaderboardBody');
+
+            list.forEach((item, index) => {
+                let badgeClass = 'bg-slate-700 text-slate-300';
+                if (index === 0) badgeClass = 'gold font-bold';
+                if (index === 1) badgeClass = 'silver font-bold';
+                if (index === 2) badgeClass = 'bronze font-bold';
+
+                const displayVal = isTotal ? `${item.value} ${suffix}` : item.value;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-3 text-center">
+                        <span class="inline-block w-6 h-6 rounded-full text-xs leading-6 ${badgeClass}">${index + 1}</span>
+                    </td>
+                    <td class="p-3 font-semibold">${item.team}</td>
+                    <td class="p-3 text-right font-mono text-yellow-400 font-bold">${displayVal}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function adjustScore(amount) {
+            const input = document.getElementById('scoreValue');
+            let currentVal = parseFloat(input.value) || 0;
+            currentVal = Math.min(100, Math.max(0, currentVal + amount));
+            input.value = currentVal;
+        }
+
+        function resetScore() { document.getElementById('scoreValue').value = 0; }
+
+        function updateFormInputType() {
+            const gameId = document.getElementById('gameSelect').value;
+            const rule = gameRules[gameId];
+            
+            document.getElementById('timeInputGroup').classList.add('hidden');
+            document.getElementById('multiScoreInputGroup').classList.add('hidden');
+            document.getElementById('scoreInputGroup').classList.add('hidden');
+
+            if (rule.type === 'time') {
+                document.getElementById('timeInputGroup').classList.remove('hidden');
+            } else if (rule.type === 'multi_score') {
+                document.getElementById('multiScoreInputGroup').classList.remove('hidden');
+            } else {
+                document.getElementById('scoreInputGroup').classList.remove('hidden');
+            }
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+                btn.className = 'px-2.5 py-1.5 rounded text-slate-300 hover:bg-slate-800';
+            });
+            document.getElementById(`tab-${tab}`).className = 'px-2.5 py-1.5 rounded font-bold bg-yellow-500 text-slate-900';
+            renderLeaderboard();
+        }
+
+        updateFormInputType();
+    </script>
+</body>
+</html>
